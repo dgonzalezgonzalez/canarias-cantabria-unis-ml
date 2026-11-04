@@ -189,7 +189,17 @@ def run_jobs_pipeline_with_outcome(
     cleaned_records.sort(key=lambda record: (record.publication_date or "", record.source), reverse=True)
     output_records = _select_with_source_coverage(cleaned_records, max_total)
     mapped_records = annotate_job_degree_targets(output_records)
-    repo = JobsRepository(db_path or default_jobs_db(region))
+    database = Path(db_path or default_jobs_db(region))
+    seed_records = []
+    if not database.exists() and Path(output_path).is_file():
+        # A clone may have a CSV snapshot but no untracked SQLite database yet.
+        with open(output_path, encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                row["is_active"] = str(row.get("is_active", "1")).strip().casefold() not in {"", "0", "false", "no", "off"}
+                seed_records.append(JobRecord(**row))
+    repo = JobsRepository(database)
+    if seed_records:
+        repo.upsert_records(seed_records)
     stats = repo.upsert_records(mapped_records)
     # Deactivate only records from a source that explicitly reported a complete
     # snapshot. Best-effort/capped sources (JobSpy, Turijobs) never erase data.

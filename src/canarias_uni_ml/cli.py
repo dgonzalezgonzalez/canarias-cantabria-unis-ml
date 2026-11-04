@@ -175,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
                 sce_only=args.sce_only,
             )
         if args.jobs_command == "daemon":
+            if args.strategy == "scale" and args.sources:
+                parser.error("--sources requires jobs daemon --strategy scrape; scale has its own fixed sources")
             if args.region != "canarias" and args.strategy == "scale":
                 parser.error("jobs daemon --strategy scale currently supports only --region canarias")
             return run_jobs_daemon(

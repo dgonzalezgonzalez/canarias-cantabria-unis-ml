@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from .spiders import EmcanSpider, JobspySpider, SCESpider, TrabajoCantabriaSpider, TurijobsSpider
+from .spiders import EmcanSpider, JobspySpider, JobTodaySpider, SCESpider, TrabajoCantabriaSpider, TurijobsSpider
 
 
 SUPPORTED_REGIONS = ("canarias", "cantabria")
 
-SOURCE_NAMES = ("sce", "emcan", "trabajocantabria", "turijobs", "jobspy")
+SOURCE_NAMES = ("sce", "emcan", "trabajocantabria", "turijobs", "jobspy", "jobtoday")
 
 
 def default_spiders(region: str, sources: list[str] | tuple[str, ...] | None = None) -> list[object]:
@@ -17,7 +17,7 @@ def default_spiders(region: str, sources: list[str] | tuple[str, ...] | None = N
         unknown = sorted(set(selected) - set(SOURCE_NAMES))
         if unknown:
             raise ValueError(f"Unsupported job sources: {', '.join(unknown)}")
-        allowed = {"canarias": {"sce", "turijobs", "jobspy"}, "cantabria": {"emcan", "trabajocantabria", "turijobs", "jobspy"}}[normalized]
+        allowed = {"canarias": {"sce", "turijobs", "jobspy", "jobtoday"}, "cantabria": {"emcan", "trabajocantabria", "turijobs", "jobspy", "jobtoday"}}[normalized]
         invalid = sorted(set(selected) - allowed)
         if invalid:
             raise ValueError(f"Sources not available for {normalized}: {', '.join(invalid)}")
@@ -33,6 +33,8 @@ def default_spiders(region: str, sources: list[str] | tuple[str, ...] | None = N
             spiders.append(TurijobsSpider(region=normalized))
         if wanted("jobspy"):
             spiders.append(JobspySpider(region=normalized))
+        if wanted("jobtoday"):
+            spiders.append(JobTodaySpider(region=normalized))
         return spiders
     if normalized == "cantabria":
         spiders = []
@@ -44,5 +46,7 @@ def default_spiders(region: str, sources: list[str] | tuple[str, ...] | None = N
             spiders.append(TurijobsSpider(region=normalized))
         if wanted("jobspy"):
             spiders.append(JobspySpider(region=normalized))
+        if wanted("jobtoday"):
+            spiders.append(JobTodaySpider(region=normalized))
         return spiders
     raise AssertionError("unreachable")

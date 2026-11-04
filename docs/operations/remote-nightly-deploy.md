@@ -1,159 +1,111 @@
-# Remote Nightly Deploy
+# Remote nightly deployment: Canarias and Cantabria
 
-## Remote run order (safe)
+This is the deployment handoff for the Scrapling/JOB TODAY integration (2026-11-04).
+Repository: https://github.com/dgonzalezgonzalez/canarias-cantabria-unis-ml
+Deployment branch: `cantabria-scraper`. Fetch this branch explicitly; an older `main` checkout does not contain this integration.
 
-Run in this exact order on the remote host:
+## What runs
 
-1. Backup current DB
-```bash
-cp data/processed/canarias_jobs.db data/processed/canarias_jobs.$(date +%F).bak.db
-```
+| Service | Region | Explicit sources | Output prefix |
+| --- | --- | --- | --- |
+| `canarias-jobs-daemon` | Canarias | `sce,jobtoday` | `data/processed/canarias_jobs` |
+| `cantabria-jobs-daemon` | Cantabria | `emcan,jobtoday` | `data/processed/cantabria_jobs` |
 
-2. Stop daemon/service
-```bash
-sudo systemctl stop canarias-jobs-daemon.service
-```
+Both templates use `--strategy scrape`, a 22:00–07:30 Europe/Madrid window, a 1440-minute cooldown, and a 10000-record per-source safety limit. JOB TODAY additionally bounds each city search to 25 pages. These are best-effort regional searches, not a complete census.
 
-3. Compact DB (drop logical duplicates, keep latest row per job)
-```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs compact --db-path data/processed/canarias_jobs.db
-```
+**Change from the old Canarias unit:** `scale` does not call JOB TODAY. The supplied unit now uses `scrape` and the explicit sources above. This also replaces its old five-minute repeat loop with a daily cooldown. Indeed/JobSpy and Turijobs remain available as optional `scrape` sources; they are not enabled in these templates. Do not keep an old daemon or cron job writing the same region's files at the same time.
 
-4. Preflight one cycle
-```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once --strategy scale --time-limit-minutes 45
-```
+JOB TODAY uses Scrapling **HTTP** sessions. No browser download, MCP server, Codex installation, paid proxy, API subscription, OpenAI key or CAPTCHA service is needed on the VM. The local Codex skill/MCP installation is separate from this Python service. `requirements.txt` installs the runtime; its Playwright pin was raised to match Scrapling's fetcher requirements. Chromium is needed only if enabling Turijobs.
 
-5. Start nightly daemon
-```bash
-sudo systemctl start canarias-jobs-daemon.service
-```
+## Update an existing machine safely
 
-6. Monitor health/logs
-```bash
-sudo systemctl status canarias-jobs-daemon.service
-sudo journalctl -u canarias-jobs-daemon.service -f
-```
-
-## 1) Bootstrap machine
+Run from its existing repository directory. Stop both services before backing up SQLite and before updating code. If service names differ, stop the actual local units/cron jobs first. Preserve any unrelated local code changes; do not reset or delete the data directory.
 
 ```bash
-git clone <repo-url>
-cd canarias-uni-ml
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m playwright install --with-deps chromium  # only if enabling Turijobs
+sudo systemctl stop canarias-jobs-daemon.service cantabria-jobs-daemon.service
+mkdir -p backups
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+for region in canarias cantabria; do
+  for suffix in db csv; do
+    file="data/processed/${region}_jobs.${suffix}"
+    if [ -f "$file" ]; then cp -p "$file" "backups/${region}_jobs.${stamp}.${suffix}"; fi
+  done
+done
+
+git fetch origin
+git switch cantabria-scraper
+git pull --ff-only origin cantabria-scraper
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip check
 ```
 
-Set required env vars in service environment (or `.env`):
+## New machine
 
-- `INFOJOBS_CLIENT_ID`
-- `INFOJOBS_CLIENT_SECRET`
-- Do not configure proxies to bypass source controls; JobSpy and Turijobs are optional.
-
-## Cantabria VM (recommended path)
-
-Use the renamed repository and region-specific paths:
+Python 3.12 is the tested interpreter. On a host providing it, install its `venv` support using the OS package manager if absent, then:
 
 ```bash
-git clone https://github.com/dgonzalezgonzalez/canarias-cantabria-unis-ml.git
-cd canarias-cantabria-unis-ml
-python3.10 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Official EMCAN-only preflight (the shipped systemd unit uses the same source set)
-.venv/bin/python -m src.canarias_uni_ml.cli jobs scrape \
-  --region cantabria --sources emcan --limit-per-source 200
-
-# Optional local board, only after its terms are cleared
-.venv/bin/python -m src.canarias_uni_ml.cli jobs scrape \
-  --region cantabria --sources emcan,trabajocantabria --limit-per-source 200
-
-.venv/bin/python -m src.canarias_uni_ml.cli jobs compact --region cantabria
-sudo cp deploy/systemd/cantabria-jobs-daemon.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now cantabria-jobs-daemon.service
+git clone --branch cantabria-scraper https://github.com/dgonzalezgonzalez/canarias-cantabria-unis-ml.git /opt/canarias-cantabria-unis-ml
+cd /opt/canarias-cantabria-unis-ml
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip check
 ```
 
-The Cantabria unit writes `data/processed/cantabria_jobs.db` and
-`data/processed/cantabria_jobs.csv`, runs one complete cycle per nightly window,
-and restarts only after a failed source-health threshold. EMCAN is enabled by
-default; add `--sources trabajocantabria` only after documenting permission.
+Create the checkout as, or grant write access to, the intended service user. The templates assume `User=ubuntu` and `/opt/canarias-cantabria-unis-ml`. If the existing checkout is `/opt/canarias-uni-ml` or another path, edit `User`, `WorkingDirectory`, `EnvironmentFile` and the Python path in `ExecStart` consistently before installing both units. `.env` is optional for these sources.
 
-## 2) Preflight check (mandatory)
+The existing regional SQLite databases are authoritative and stay on the remote machine. Local CSV snapshots, database files, raw HTML and machine-specific Codex configuration are not part of this deployment commit. If a CSV exists but its regional database is absent, the first successful `scrape` cycle imports the CSV into the new database before adding offers. A source failure preserves the old CSV. An existing database is never reseeded or replaced from Git.
+
+## Test and preflight before enabling services
 
 ```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once
+.venv/bin/python -m pytest tests/test_jobtoday_spider.py tests/test_emcan_spider.py tests/test_jobs_pipeline.py tests/test_jobs_daemon_runtime.py tests/test_jobs_daemon_schedule.py tests/test_cli_modes.py -q
+
+# Small real requests verify connectivity and both exact daemon routes.
+# Partial JOB TODAY results never deactivate historical offers.
+.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once \
+  --region canarias --strategy scrape --sources sce,jobtoday --limit-per-source 1
+.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once \
+  --region cantabria --strategy scrape --sources emcan,jobtoday --limit-per-source 1
 ```
 
-Expected:
+Each region should log `[ok] jobtoday`, `[done] wrote ...`, and a successful cycle summary. A zero exit status can also mean another selected source succeeded while JOB TODAY failed: inspect individual source logs, not only the exit code. If necessary isolate the new source with `--sources jobtoday`. Do not enable the daemon until the VM can actually retrieve JOB TODAY.
 
-- command exits `0`
-- logs include cycle summary with `strategy/scraped/inserted/updated/unchanged`
-- files created:
-  - `data/processed/canarias_jobs.db`
-  - `data/processed/canarias_jobs.csv`
+If a unit fails to acquire its regional lock, find the existing process first. The daemon reclaims stale locks; do not delete a lock belonging to a live process. The two regions use separate CSVs, databases and lock files. `--sources` is rejected with `--strategy scale` so the new source cannot be silently ignored.
 
-## 2b) One-time dedupe for existing DB
+## Install, start and monitor both services
 
-If DB has legacy duplicates, stop daemon and compact:
-
-```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs compact --db-path data/processed/canarias_jobs.db
-```
-
-Take backup before first compaction:
-
-```bash
-cp data/processed/canarias_jobs.db data/processed/canarias_jobs.$(date +%F).bak.db
-```
-
-## 3) Continuous nightly mode
-
-```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon \
-  --window-start 22:00 \
-  --window-end 07:30 \
-  --timezone Europe/Madrid \
-  --strategy scale \
-  --time-limit-minutes 45 \
-  --cooldown-minutes 5 \
-  --stagnation-cycles 6 \
-  --fail-on-stagnation
-```
-
-## 4) Service mode (`systemd`)
-
-Install template from `deploy/systemd/canarias-jobs-daemon.service` and adjust:
-
-- `User`
-- `WorkingDirectory`
-- `EnvironmentFile`
-
-Enable service:
+After adjusting the templates for this machine:
 
 ```bash
 sudo cp deploy/systemd/canarias-jobs-daemon.service /etc/systemd/system/
+sudo cp deploy/systemd/cantabria-jobs-daemon.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now canarias-jobs-daemon.service
+sudo systemctl enable --now canarias-jobs-daemon.service cantabria-jobs-daemon.service
+sudo systemctl status canarias-jobs-daemon.service cantabria-jobs-daemon.service
+sudo journalctl -u canarias-jobs-daemon.service -u cantabria-jobs-daemon.service -f
 ```
 
-## 5) Monitoring and stop
+Outside the configured window they wait. `--run-once` bypasses that window for preflight. A daily cooldown follows each completed cycle; both processes remain running. No-change successful cycles are healthy. Templates restart on failure, not after every successful scrape. Their health threshold follows existing pipeline behavior: one working source keeps a mixed-source cycle healthy, so monitor `[skip] jobtoday` and `[jobtoday]` warnings too.
+
+## Source behavior and limits
+
+- The same `JobTodaySpider` backs the CLI, manual helper and both daemons. `--sources jobtoday` is supported for either region.
+- Listings and each accepted native detail page are checked. Jobs require Spain plus the exact `cn`/`cb` region code and `isActive=true`; known out-of-region listings are excluded before detail requests.
+- Every crawl retrieves and enforces the live robots policy. External aggregator jobs and disallowed `*_ext_*` pages are excluded. Requests are sequential within a source and delayed by 0.5 seconds. Check the current source terms before changing this internal-research use to commercial reuse or redistribution.
+- Stable source URLs drive SQLite upserts and repeat-night deduplication. Partial/capped/blocked results always have `complete=False`, so JOB TODAY never deactivates offers merely missing from one crawl. Historical JOB TODAY offers can therefore remain active; this is not a fully maintained census of current vacancies.
+- HTTP 404/410, malformed pages and failed seed searches are logged. Nonempty partial results are retained; if no verified offers are available the source fails and the pipeline keeps the previous snapshot when no other source succeeds.
+- InfoJobs remains disabled: its website robots excludes ChatGPT and no official API credentials are available. Do not enable the legacy paid ScrapingBee fallback. No paid services were added.
+
+The manual equivalent, from the repository root, is:
 
 ```bash
-sudo systemctl status canarias-jobs-daemon.service
-sudo journalctl -u canarias-jobs-daemon.service -f
-sudo systemctl stop canarias-jobs-daemon.service
+.venv/bin/python -m scripts.scrape_scrapling_jobs --region both --limit-per-source 10000
 ```
 
-Watch for source-health signals:
-- repeated `[warn] unhealthy source cycle`
-- `[warn] failure threshold reached`
-- `[error] exiting non-zero to allow supervisor restart`
+Remote startup and network policy must be verified by the agent on that VM. Local tests and a local live preflight cannot establish remote deployment success.
 
-## 6) Git flow
+## Local validation and known baseline failures
 
-- branch naming: `feat/canarias-*`
-- include code + tests + docs in same change set
+On 2026-11-04 the focused scraper/pipeline/CLI/daemon/storage/Turijobs/compatibility checks passed (51 tests). Both actual daemon CLI routes also retrieved one live JOB TODAY offer into isolated temporary files. Dependency installation and `pip check` passed. Two process-lock tests were excluded on Windows; run them on the Linux VM.
+
+An earlier wider-suite run had 130 passing tests and three failures in untouched degree code/fixtures: `test_degree_storage.py` hits a missing `DegreeCatalogRecord.description_status` attribute, and two `test_program_page_resolver.py` tests require untracked/missing `tests/fixtures/program_page_samples` HTML files. These are outside the JOB TODAY deployment change; do not interpret them as a successful full-suite run or silently fabricate the fixtures.

@@ -26,6 +26,7 @@ class EmcanSpider:
 
     def __init__(self, search_url: str = SNE_CANTABRIA_SEARCH_URL) -> None:
         self.search_url = search_url
+        self._listing_complete = False
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -65,10 +66,11 @@ class EmcanSpider:
         return SpiderResult(
             source=self.source,
             records=records[:limit],
-            complete=len(detail_urls) < limit and not failures,
+            complete=self._listing_complete and len(detail_urls) < limit and not failures,
         )
 
     def _fetch_detail_urls(self, limit: int) -> list[str]:
+        self._listing_complete = False
         pending = deque([self.search_url])
         visited_pages: set[str] = set()
         detail_urls: list[str] = []
@@ -98,6 +100,7 @@ class EmcanSpider:
             for next_url in pages:
                 if next_url not in visited_pages:
                     pending.append(next_url)
+        self._listing_complete = not pending and len(visited_pages) < 25
         return detail_urls
 
     @classmethod

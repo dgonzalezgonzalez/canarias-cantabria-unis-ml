@@ -1,4 +1,7 @@
 from src.canarias_uni_ml.jobs.spiders.emcan import EmcanSpider
+from types import SimpleNamespace
+
+import pytest
 
 
 LISTING_HTML = """
@@ -58,6 +61,27 @@ def test_emcan_listing_accepts_current_listado_pagination_shape():
 
 def test_emcan_session_cancelled_page_is_detected():
     assert EmcanSpider._is_session_cancelled("<html>Sesión Cancelada</html>") is True
+
+
+@pytest.mark.parametrize("pages,complete", [(2, True), (26, False)])
+def test_emcan_page_bound_is_not_a_complete_snapshot(monkeypatch, pages, complete):
+    spider = EmcanSpider(search_url="https://www.sistemanacionalempleo.es/list?page=1")
+
+    def get(url, **kwargs):
+        text = DETAIL_HTML if "detalleOferta" in url else url.split("page=")[1]
+        return SimpleNamespace(text=text, url=url, raise_for_status=lambda: None)
+
+    def listing(html, base_url):
+        page = int(html)
+        detail = f"https://www.sistemanacionalempleo.es/detalleOferta.do?id=062026{page:06d}"
+        following = [f"https://www.sistemanacionalempleo.es/list?page={page + 1}"] if page < pages else []
+        return [detail], following
+
+    monkeypatch.setattr(spider.session, "get", get)
+    monkeypatch.setattr(spider, "_parse_listing_links", listing)
+    result = spider.fetch(10000)
+    assert len(result.records) == min(pages, 25)
+    assert result.complete is complete
 
 
 def test_emcan_detail_parser_extracts_occupation_and_full_description():

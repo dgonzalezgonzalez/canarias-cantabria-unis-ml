@@ -7,6 +7,7 @@ Python pipeline for Canary Islands and Cantabria job postings plus Spanish unive
 | Surface | Status | Notes |
 |--------|--------|-------|
 | SCE | ✅ Working | API JWT, número de ofertas variable |
+| JOB TODAY / Scrapling | ✅ Added | Native offers for both regions; partial coverage, no API key |
 | EMCAN / SNE | ✅ Added | Official Cantabria offer details, no credentials |
 | Trabajo Cantabria | ✅ Added | CEOE-CEPYME Cantabria public listing/details |
 | Turijobs | ✅ Working | Sitemap + detail pages |
@@ -119,55 +120,20 @@ Canonical and raw values both persist:
 
 Production deployment guide: `docs/operations/remote-nightly-deploy.md`
 
-Cantabria VM command:
+Two-region VM setup and the remote-agent handoff are documented in
+[Remote nightly deployment](docs/operations/remote-nightly-deploy.md).
+The shipped units select `sce,jobtoday` for Canarias and `emcan,jobtoday` for Cantabria,
+using `--strategy scrape` and a daily cooldown. `scale` does not run JOB TODAY.
 
 ```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon \
-  --region cantabria \
-  --sources emcan \
-  --strategy scrape \
-  --limit-per-source 200 \
-  --window-start 22:00 \
-  --window-end 07:30 \
-  --cooldown-minutes 1440
+# Small manual preflight of the new source for each region
+.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once --strategy scrape --region canarias --sources jobtoday --limit-per-source 1
+.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once --strategy scrape --region cantabria --sources jobtoday --limit-per-source 1
 ```
 
-Ready-made unit: `deploy/systemd/cantabria-jobs-daemon.service`. Source rationale, alternatives, and risks: `docs/cantabria-job-sources.md`.
-
-## Remote run order (safe)
-
-Run in this exact order on the remote host:
-
-1. Backup current DB
-```bash
-cp data/processed/canarias_jobs.db data/processed/canarias_jobs.$(date +%F).bak.db
-```
-
-2. Stop daemon/service
-```bash
-sudo systemctl stop canarias-jobs-daemon.service
-```
-
-3. Compact DB (drop logical duplicates, keep latest row per job)
-```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs compact --region canarias
-```
-
-4. Preflight one cycle
-```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once --strategy scale --time-limit-minutes 45
-```
-
-5. Start nightly daemon
-```bash
-sudo systemctl start canarias-jobs-daemon.service
-```
-
-6. Monitor health/logs
-```bash
-sudo systemctl status canarias-jobs-daemon.service
-sudo journalctl -u canarias-jobs-daemon.service -f
-```
+Scrapling HTTP collection needs no Chromium download, MCP server, API key or paid service.
+[Scrapling notes](docs/scrapling-setup.md) cover local installation, source limits and the previous collection.
+The deployment runbook covers both systemd units, backups, dependency installation and existing-state preservation.
 
 ## Job-Degree Pairing (Detailed)
 

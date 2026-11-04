@@ -1,5 +1,5 @@
 [Unit]
-Description=Cantabria Jobs Nightly Daemon
+Description=Cantabria Jobs Nightly Daemon (official source + Scrapling JOB TODAY)
 After=network-online.target
 Wants=network-online.target
 
@@ -9,9 +9,7 @@ User=ubuntu
 WorkingDirectory=/opt/canarias-cantabria-unis-ml
 EnvironmentFile=-/opt/canarias-cantabria-unis-ml/.env
 Environment=PYTHONUNBUFFERED=1
-# EMCAN is the cleared official default. Add --sources trabajocantabria only
-# after the source terms have been reviewed and permission is documented.
-ExecStart=/opt/canarias-cantabria-unis-ml/.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --region cantabria --sources emcan --window-start 22:00 --window-end 07:30 --timezone Europe/Madrid --strategy scrape --limit-per-source 200 --cooldown-minutes 1440 --stagnation-cycles 1 --fail-on-stagnation
+ExecStart=/opt/canarias-cantabria-unis-ml/.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --region cantabria --sources emcan,jobtoday --window-start 22:00 --window-end 07:30 --timezone Europe/Madrid --strategy scrape --limit-per-source 10000 --cooldown-minutes 1440 --stagnation-cycles 1 --fail-on-stagnation
 Restart=on-failure
 RestartSec=60
 KillSignal=SIGTERM
