@@ -4,6 +4,8 @@ This is the deployment handoff for the Scrapling/JOB TODAY integration (2026-11-
 Repository: https://github.com/dgonzalezgonzalez/canarias-cantabria-unis-ml
 Deployment branch: `main`. Both regional scrapers, JOB TODAY and the optional public InfoJobs adapter were consolidated there on 2026-11-05. Update old checkouts explicitly; separate regional deployment branches are no longer used.
 
+For the optional free Proton extension on a Windows remote host without administrator access, use [the Windows InfoJobs runbook](infojobs-proton-windows.md). Its manual first sign-in and shared dedicated browser profile are separate from these Linux/systemd instructions. Do not copy workstation authentication profiles.
+
 ## What runs
 
 | Service | Region | Explicit sources | Output prefix |
