@@ -52,7 +52,7 @@ Respect each site's terms, robots policy, and rate limits before scraping. Store
 - `sce` works via a JWT extracted from the public Angular iframe and then a JSON API call.
 - `turijobs` works best from `active-offers.xml` plus detail pages, not the paginated listing UI.
 - `indeed` is currently blocked from this environment by Cloudflare even in Playwright. Treat it as best-effort unless network conditions change.
-- `infojobs` is implemented against the official API and requires `INFOJOBS_CLIENT_ID` and `INFOJOBS_CLIENT_SECRET`.
+- `--sources infojobs` selects `InfoJobsPublicSpider` in `infojobs_public.py`, using public pages through Scrapling without credentials. The old API/ScrapingBee adapter is not selected by the canonical pipeline; never call its paid fallback.
 
 ## Remote-agent handoff: Scrapling/JOB TODAY (2026-11-04)
 
@@ -65,6 +65,14 @@ Respect each site's terms, robots policy, and rate limits before scraping. Store
 - Run fixture tests and a small `--run-once` preflight for BOTH regions on the VM. Inspect `[ok] jobtoday` specifically: another successful source can mask a JOB TODAY failure in the overall exit status. Only then enable both services. Do not claim the remote daemon is running until checked on the remote host.
 - SQLite is canonical. A first successful scrape seeds a missing database from the existing regional CSV before upserting new offers. Existing databases are never replaced from CSV/Git. JOB TODAY always returns `complete=False`; partial searches must never deactivate missing historical rows.
 - Validate Spain plus exact regional codes (`cn` Canarias, `cb` Cantabria), active native offers, trusted source URLs and current robots rules. Skip external/`*_ext_*` aggregator offers. Keep the 0.5-second request delay and bounded pagination. Coverage is partial; absent offers are not proof of closure.
-- Preserve the existing InfoJobs limitation: no API access, no website scraping against its robots rules, and no paid ScrapingBee fallback. Source terms restrict commercial reuse; do not publish scraped full-text datasets as part of a code deployment.
+- InfoJobs follow-up (2026-11-05): the user explicitly requested this public-page research attempt despite the earlier robots restriction. This records the user's instruction, not a legal finding about institutional powers. InfoJobs remains an explicit opt-in (`--sources infojobs`); no API credentials, paid services, proxy rotation or CAPTCHA solvers are used. See the updated deployment runbook before enabling it remotely. Source terms restrict commercial reuse; do not publish scraped full-text datasets as part of a code deployment.
 - The workstation's previous collection verified 443 JOB TODAY records for Canarias and 179 for Cantabria. These CSV snapshots/databases/raw captures and local logs are not deployment files; the remote agent must retain/recollect its own state. See [Scrapling notes](docs/scrapling-setup.md).
 - The deployment runbook records local validation and three known failures in untouched degree-catalog code/missing fixtures. Do not claim the full suite passed. Run the two process-lock tests on Linux; they were excluded on Windows.
+
+## Public InfoJobs adapter
+
+- Install browser binaries on the target machine with its venv's `scrapling install` under the actual service user (including required Linux OS libraries). JOB TODAY alone still needs no browser. Do not copy workstation browser cookies or browser profiles.
+- Public search URLs must explicitly include `provinceIds=13` (Cantabria), `20` (Las Palmas), or `46` (Santa Cruz de Tenerife) on EVERY page. Appending `?page=2` to a regional slug loses the province filter and produces nationwide results. Validate the returned search filter and page number before accepting candidates.
+- Read the public HTML's `window.__INITIAL_PROPS__` JSON string using JSON decoding, never execute downloaded scripts. Verify each native detail's matching offer code, exact province ID and `canApply=true`; retain descriptions and requirements. Strip tracking queries for stable URL upserts. Do not assume that a search result's city proves its province.
+- Requests use the initialized browser's ordinary same-origin `fetch` for public HTML, at most two starts per second. Stop on a browser check, 403/405/429, unexpected pagination or other access failure; retain any verified partial data. There is no automated challenge solver or paid retry path. Both complete and capped traversals report `complete=False` to protect historical records.
+- The local broad attempt received HTTP 405 after 98 verified Cantabria offers. Connectivity depends on host/network; preflight each region with a small `--limit-per-source` before scheduling. Inspect `[infojobs]` warnings even when the pipeline exit status is zero. No remote InfoJobs run has been verified.

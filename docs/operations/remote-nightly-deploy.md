@@ -94,7 +94,26 @@ Outside the configured window they wait. `--run-once` bypasses that window for p
 - Every crawl retrieves and enforces the live robots policy. External aggregator jobs and disallowed `*_ext_*` pages are excluded. Requests are sequential within a source and delayed by 0.5 seconds. Check the current source terms before changing this internal-research use to commercial reuse or redistribution.
 - Stable source URLs drive SQLite upserts and repeat-night deduplication. Partial/capped/blocked results always have `complete=False`, so JOB TODAY never deactivates offers merely missing from one crawl. Historical JOB TODAY offers can therefore remain active; this is not a fully maintained census of current vacancies.
 - HTTP 404/410, malformed pages and failed seed searches are logged. Nonempty partial results are retained; if no verified offers are available the source fails and the pipeline keeps the previous snapshot when no other source succeeds.
-- InfoJobs remains disabled: its website robots excludes ChatGPT and no official API credentials are available. Do not enable the legacy paid ScrapingBee fallback. No paid services were added.
+- InfoJobs public pages are now available as an explicit opt-in after the user's 2026-11-05 instruction. The shipped units still select the sources in the table above. See the section below; never enable the legacy paid ScrapingBee adapter.
+
+## Optional InfoJobs without API credentials (2026-11-05)
+
+The user explicitly requested a public-page research attempt despite the previously recorded robots exclusion. This documents that instruction; it does not establish an institutional legal exemption. The canonical `--sources infojobs` selects `InfoJobsPublicSpider`, not the old API/ScrapingBee adapter. It requires no keys, paid proxy or CAPTCHA service.
+
+Install the Scrapling browser runtime using the same account and environment as the service; a browser installed in root's cache may be invisible to `User=ubuntu`. Install any required Linux shared libraries reported by the installer.
+
+```bash
+.venv/bin/scrapling install
+.venv/bin/python -m pytest tests/test_infojobs_public.py -q
+.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once \
+  --region canarias --strategy scrape --sources infojobs --limit-per-source 1
+.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once \
+  --region cantabria --strategy scrape --sources infojobs --limit-per-source 1
+```
+
+If both preflights work, add `infojobs` to the existing `ExecStart` source lists (`sce,jobtoday,infojobs` and `emcan,jobtoday,infojobs`), then reload/restart both units. Keep the regional databases, daily cooldown and separate locks. InfoJobs is not included when `--sources` is omitted.
+
+The adapter follows explicit province filters on every page and checks each detail's province and `canApply` status. It retains full available detail descriptions, minimum/desired requirements and education fields in the description. Public search descriptions alone may be truncated and are not treated as full detail. It makes ordinary same-origin browser requests, caps each province at 250 pages, and stops on access failures instead of solving challenges or rotating identities. Missing/partial results never deactivate historical rows. Monitor `[infojobs]` lines: a source can return some records successfully and still stop early on HTTP 405/429. Local collection reached 98 verified Cantabria offers before HTTP 405; remote access and sustained coverage remain unverified.
 
 The manual equivalent, from the repository root, is:
 

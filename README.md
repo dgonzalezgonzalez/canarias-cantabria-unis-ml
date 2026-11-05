@@ -8,6 +8,7 @@ Python pipeline for Canary Islands and Cantabria job postings plus Spanish unive
 |--------|--------|-------|
 | SCE | ✅ Working | API JWT, número de ofertas variable |
 | JOB TODAY / Scrapling | ✅ Added | Native offers for both regions; partial coverage, no API key |
+| InfoJobs / Scrapling | 🧪 Opt-in | Public detail pages for both regions; no API key; stops on access failures |
 | EMCAN / SNE | ✅ Added | Official Cantabria offer details, no credentials |
 | Trabajo Cantabria | ✅ Added | CEOE-CEPYME Cantabria public listing/details |
 | Turijobs | ✅ Working | Sitemap + detail pages |
@@ -38,6 +39,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 # Only needed for Turijobs; install OS dependencies under the service user on Linux.
 python -m playwright install --with-deps chromium
+# Optional InfoJobs public browser adapter: install under the service account.
+scrapling install
 
 # Scrape jobs
 python -m src.canarias_uni_ml.cli jobs scrape --limit-per-source 50
@@ -48,6 +51,9 @@ python -m src.canarias_uni_ml.cli jobs scrape --region cantabria --limit-per-sou
 python -m src.canarias_uni_ml.cli jobs scrape --region cantabria --sources emcan --limit-per-source 200
 # Opt into Trabajo Cantabria only after its source terms are cleared
 python -m src.canarias_uni_ml.cli jobs scrape --region cantabria --sources emcan,trabajocantabria --limit-per-source 200
+# Explicit public InfoJobs attempt (partial results; see docs/scrapling-setup.md).
+python -m src.canarias_uni_ml.cli jobs scrape --region cantabria --sources infojobs --limit-per-source 10000
+python -m src.canarias_uni_ml.cli jobs scrape --region canarias --sources infojobs --limit-per-source 10000
 
 # Build degree catalog from fixture
 python -m src.canarias_uni_ml.cli degrees catalog --fixture tests/fixtures/degrees_catalog_fixture.json

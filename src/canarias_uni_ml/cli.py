@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     jobs_scrape.add_argument("--output")
     jobs_scrape.add_argument("--db-path")
     jobs_scrape.add_argument("--region", choices=SUPPORTED_REGIONS, default="canarias")
-    jobs_scrape.add_argument("--sources", help="Comma-separated source names (default: all region sources)")
+    jobs_scrape.add_argument("--sources", help="Comma-separated source names (default: standard region sources; infojobs is opt-in)")
 
     jobs_scale = jobs_sub.add_parser("scale", help="Scaled scraping run")
     jobs_scale.add_argument("--output")
@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     jobs_daemon.add_argument("--stagnation-cycles", type=int, default=0)
     jobs_daemon.add_argument("--fail-on-stagnation", action="store_true")
     jobs_daemon.add_argument("--region", choices=SUPPORTED_REGIONS, default="canarias")
-    jobs_daemon.add_argument("--sources", help="Comma-separated source names (default: all region sources)")
+    jobs_daemon.add_argument("--sources", help="Comma-separated source names (default: standard region sources; infojobs is opt-in)")
 
     jobs_compact = jobs_sub.add_parser("compact", help="Compact existing jobs DB to latest logical rows")
     jobs_compact.add_argument("--db-path")
