@@ -4,7 +4,7 @@ This is the deployment handoff for the Scrapling/JOB TODAY integration (2026-11-
 Repository: https://github.com/dgonzalezgonzalez/canarias-cantabria-unis-ml
 Deployment branch: `main`. Both regional scrapers, JOB TODAY and the optional public InfoJobs adapter were consolidated there on 2026-11-05. Update old checkouts explicitly; separate regional deployment branches are no longer used.
 
-For the optional free Proton extension on a Windows remote host without administrator access, use [the Windows InfoJobs runbook](infojobs-proton-windows.md). Its manual first sign-in and shared dedicated browser profile are separate from these Linux/systemd instructions. Do not copy workstation authentication profiles.
+Deployment choice, 2026-11-05: use the previous direct InfoJobs adapter. The experimental Proton integration was removed because its tests did not establish sustained access and the user prefers simpler remote setup. No VPN installation, account or signed-in browser profile is needed. Remove obsolete experimental `INFOJOBS_BROWSER_PROFILE`, `INFOJOBS_PROTON_EXTENSION`, `INFOJOBS_REQUIRE_PROTON` and `INFOJOBS_REQUEST_INTERVAL_SECONDS` settings if present. Keep all regional data; the independent Windows process-lock fix is retained. InfoJobs remains opt-in and can still be limited.
 
 ## What runs
 
@@ -17,7 +17,7 @@ Both templates use `--strategy scrape`, a 22:00–07:30 Europe/Madrid window, a 
 
 **Change from the old Canarias unit:** `scale` does not call JOB TODAY. The supplied unit now uses `scrape` and the explicit sources above. This also replaces its old five-minute repeat loop with a daily cooldown. Indeed/JobSpy and Turijobs remain available as optional `scrape` sources; they are not enabled in these templates. Do not keep an old daemon or cron job writing the same region's files at the same time.
 
-JOB TODAY uses Scrapling **HTTP** sessions. No browser download, MCP server, Codex installation, paid proxy, API subscription, OpenAI key or CAPTCHA service is needed on the VM. The local Codex skill/MCP installation is separate from this Python service. `requirements.txt` installs the runtime; its Playwright pin was raised to match Scrapling's fetcher requirements. Chromium is needed only if enabling Turijobs.
+JOB TODAY uses Scrapling **HTTP** sessions. No browser download, MCP server, Codex installation, paid proxy, API subscription, OpenAI key or CAPTCHA service is needed on the VM. The local Codex skill/MCP installation is separate from this Python service. `requirements.txt` installs the runtime; its Playwright pin was raised to match Scrapling's fetcher requirements. Chromium is needed if enabling optional Turijobs or InfoJobs.
 
 ## Update an existing machine safely
 

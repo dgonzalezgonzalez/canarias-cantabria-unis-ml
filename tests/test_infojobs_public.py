@@ -10,13 +10,6 @@ from src.canarias_uni_ml.jobs.spiders.base import SpiderError
 from src.canarias_uni_ml.jobs.storage import JobsRepository
 
 
-@pytest.fixture(autouse=True)
-def isolate_browser_configuration(monkeypatch):
-    for name in ("INFOJOBS_BROWSER_PROFILE", "INFOJOBS_PROTON_EXTENSION",
-                 "INFOJOBS_REQUIRE_PROTON", "INFOJOBS_REQUEST_INTERVAL_SECONDS"):
-        monkeypatch.delenv(name, raising=False)
-
-
 def html(props):
     return "<script>window.__INITIAL_PROPS__ = JSON.parse(" + json.dumps(json.dumps(props)) + ");</script>"
 
@@ -100,10 +93,6 @@ def site(monkeypatch):
                                      [listing(), listing(), listing("outside")]}
             return {"status": 200, "html": html(payload)}
 
-        def goto(self, url, **kwargs):
-            result = self.evaluate("", url)
-            return SimpleNamespace(status=result["status"], url=url, text=lambda: result["html"])
-
     instance = Site()
     monkeypatch.setattr(ij, "StealthySession", lambda **kwargs: instance)
     monkeypatch.setattr(ij.time, "sleep", lambda _: None)
@@ -150,35 +139,6 @@ def test_gone_detail_is_skipped_without_discarding_previous_records(site):
     result = ij.InfoJobsPublicSpider("cantabria").fetch(100)
     assert [r.external_id for r in result.records] == ["abc"]
     assert any("of-iblocked" in u for u in site.calls)
-
-
-def test_capped_canarias_run_includes_both_provinces(site):
-    def evaluate(script, url):
-        site.calls.append(url)
-        if "/of-i" in url:
-            code = url.rsplit("of-i", 1)[1]
-            payload = {"offer": offer(code, int(code))}
-        else:
-            province = "20" if "provinceIds=20" in url else "46"
-            payload = {"search": {"provinceIds": [province]},
-                       "navigation": {"self": 1, "next": 2, "totalPages": 2},
-                       "offers": [listing(province)]}
-        return {"status": 200, "html": html(payload)}
-
-    site.evaluate = evaluate
-    spider = ij.InfoJobsPublicSpider("canarias")
-    result = spider.fetch(2)
-    assert {record.province for record in result.records} == {"Las Palmas", "Santa Cruz de Tenerife"}
-    assert spider.last_run["limit_reached"]
-    assert len(result.records) == 2
-
-
-@pytest.mark.parametrize("destination", ["https://example.com/", "http://www.infojobs.net/", None])
-def test_navigation_stops_on_untrusted_or_missing_response(site, destination):
-    site.goto = lambda *args, **kwargs: (None if destination is None else
-        SimpleNamespace(status=200, url=destination, text=lambda: html({"offers": []})))
-    with pytest.raises(SpiderError, match="navigation"):
-        ij.InfoJobsPublicSpider("cantabria").fetch(2)
 
 
 @pytest.mark.parametrize("region,province", [("cantabria", 13), ("canarias", 20)])

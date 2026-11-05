@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from collections import Counter
@@ -11,7 +10,6 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from ..models import JobRecord
 from ..utils import clean_text, parse_date
 from .base import SpiderError, SpiderResult
-from .infojobs_browser import browser_options, browser_session, verify_separate_egress
 
 try:
     from scrapling.fetchers import StealthySession
@@ -101,10 +99,6 @@ class InfoJobsPublicSpider:
         seen: set[str] = set()
         counts = Counter()
         errors: list[str] = []
-        interval = float(os.getenv("INFOJOBS_REQUEST_INTERVAL_SECONDS", "2"))
-        if not 0.5 <= interval <= 60:
-            raise SpiderError("INFOJOBS_REQUEST_INTERVAL_SECONDS must be between 0.5 and 60")
-        self.last_run = {"region": self.region, "counts": counts, "errors": errors, "interval_seconds": interval}
 
         def collect(page):
             last_request = time.monotonic()
@@ -113,33 +107,26 @@ class InfoJobsPublicSpider:
                 nonlocal last_request
                 if urlsplit(url).netloc != "www.infojobs.net" or urlsplit(url).scheme != "https":
                     raise SpiderError("Unexpected InfoJobs host")
-                time.sleep(max(0, interval - (time.monotonic() - last_request)))
+                time.sleep(max(0, 0.5 - (time.monotonic() - last_request)))
                 last_request = time.monotonic()
-                # Native navigation works where background fetch receives HTTP 405.
-                response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                result = page.evaluate("""async url => {
+                    const controller = new AbortController();
+                    const timer = setTimeout(() => controller.abort(), 30000);
+                    try {
+                        const response = await fetch(url, {credentials: 'same-origin', redirect: 'error', signal: controller.signal});
+                        return {status: response.status, html: await response.text()};
+                    } finally { clearTimeout(timer); }
+                }""", url)
                 counts["requests"] += 1
-                if response is None:
-                    raise SpiderError("Missing InfoJobs navigation response; stopping")
-                destination = urlsplit(response.url)
-                if destination.scheme != "https" or destination.netloc != "www.infojobs.net":
-                    raise SpiderError("Unexpected InfoJobs navigation; stopping")
-                if missing_ok and response.status in {404, 410}:
+                if missing_ok and result["status"] in {404, 410}:
                     counts["gone_detail_pages"] += 1
                     return {}
-                if response.status != 200:
-                    raise SpiderError(f"InfoJobs HTTP {response.status} at {url}; stopping")
-                try:
-                    return page_props(response.text())
-                except SpiderError as exc:
-                    raise SpiderError(f"{exc} at {response.url}") from exc
+                if result["status"] != 200:
+                    raise SpiderError(f"InfoJobs HTTP {result['status']} at {url}; stopping")
+                return page_props(result["html"])
 
             try:
-                provinces = REGIONS[self.region]
-                for index, province_id in enumerate(provinces):
-                    # Share a capped run across both Canary provinces.
-                    remaining = limit - len(records)
-                    provinces_left = len(provinces) - index
-                    target = len(records) + (remaining + provinces_left - 1) // provinces_left
+                for province_id in REGIONS[self.region]:
                     page_number = 1
                     while page_number <= 250:
                         url = f"{BASE}/ofertas-trabajo/?provinceIds={province_id}&page={page_number}"
@@ -170,16 +157,11 @@ class InfoJobsPublicSpider:
                             record = parse_offer(detail, listing, self.region, detail_url)
                             if record:
                                 records.append(record)
-                                counts[f"province_{province_id}"] += 1
                             else:
                                 counts["inactive_or_outside_region"] += 1
                             if len(records) >= limit:
                                 return
-                            if len(records) >= target:
-                                break
                         print(f"[infojobs] region={self.region} province={province_id} page={page_number}/{navigation.get('totalPages')} accepted={len(records)} counts={dict(counts)}", flush=True)
-                        if len(records) >= target:
-                            break
                         next_page = navigation.get("next")
                         if not next_page:
                             break
@@ -192,9 +174,7 @@ class InfoJobsPublicSpider:
                 errors.append(f"{type(exc).__name__}: {exc}")
 
         try:
-            with browser_session(StealthySession) as session:
-                if browser_options():
-                    self.last_run["egress"] = verify_separate_egress(session)
+            with StealthySession(headless=True, locale="es-ES", google_search=False, timeout=30000, retries=1) as session:
                 seed = f"{BASE}/ofertas-trabajo/?provinceIds={REGIONS[self.region][0]}&page=1"
                 response = session.fetch(seed, wait=1500)
                 if response.status != 200:
@@ -206,8 +186,6 @@ class InfoJobsPublicSpider:
         for error in errors:
             print(f"[infojobs] {error}", flush=True)
         print(f"[infojobs] region={self.region} accepted={len(records)} counts={dict(counts)} partial=True", flush=True)
-        self.last_run.update(accepted=len(records), complete=False, limit_reached=len(records) >= limit)
-        print("[infojobs-summary] " + json.dumps(self.last_run, ensure_ascii=False), flush=True)
         if not records:
             raise SpiderError("InfoJobs returned no verified offers; " + "; ".join(errors[:2]))
         # A moving search index, caps and blocked pages never establish a full census.
