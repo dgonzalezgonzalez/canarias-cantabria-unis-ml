@@ -2,7 +2,7 @@
 
 This is the deployment handoff for the Scrapling/JOB TODAY integration (2026-11-04).
 Repository: https://github.com/dgonzalezgonzalez/canarias-cantabria-unis-ml
-Deployment branch: `cantabria-scraper`. Fetch this branch explicitly; an older `main` checkout does not contain this integration.
+Deployment branch: `main`. Both regional scrapers, JOB TODAY and the optional public InfoJobs adapter were consolidated there on 2026-11-05. Update old checkouts explicitly; separate regional deployment branches are no longer used.
 
 ## What runs
 
@@ -33,8 +33,8 @@ for region in canarias cantabria; do
 done
 
 git fetch origin
-git switch cantabria-scraper
-git pull --ff-only origin cantabria-scraper
+git switch main
+git pull --ff-only origin main
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m pip check
 ```
@@ -44,7 +44,7 @@ git pull --ff-only origin cantabria-scraper
 Python 3.12 is the tested interpreter. On a host providing it, install its `venv` support using the OS package manager if absent, then:
 
 ```bash
-git clone --branch cantabria-scraper https://github.com/dgonzalezgonzalez/canarias-cantabria-unis-ml.git /opt/canarias-cantabria-unis-ml
+git clone --branch main https://github.com/dgonzalezgonzalez/canarias-cantabria-unis-ml.git /opt/canarias-cantabria-unis-ml
 cd /opt/canarias-cantabria-unis-ml
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt

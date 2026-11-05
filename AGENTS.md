@@ -56,7 +56,7 @@ Respect each site's terms, robots policy, and rate limits before scraping. Store
 
 ## Remote-agent handoff: Scrapling/JOB TODAY (2026-11-04)
 
-- Deployment branch is `cantabria-scraper` in `dgonzalezgonzalez/canarias-cantabria-unis-ml`. Fetch/pull that branch explicitly. Follow [the two-region deployment runbook](docs/operations/remote-nightly-deploy.md) before editing services.
+- Both regions now share the single deployment branch `main` in `dgonzalezgonzalez/canarias-cantabria-unis-ml` (consolidated 2026-11-05). Fetch/pull `main`; do not recreate separate Canarias/Cantabria branches for deployment. Follow [the two-region deployment runbook](docs/operations/remote-nightly-deploy.md) before editing services.
 - Use the existing remote checkout and preserve its databases. Stop both regional daemons/cron jobs, back up their SQLite/CSV files, update code, and install `requirements.txt` in that machine's venv. Python 3.12 is tested. Do not copy Windows `.codex` paths or this workstation's venv to Linux.
 - `JobTodaySpider(region=...)` uses Scrapling HTTP sessions and implements the standard `fetch(limit) -> SpiderResult` contract. It is available through `--sources jobtoday` for both regions. The manual script delegates to the same pipeline; there is no second scraper implementation.
 - Use `jobs daemon --strategy scrape`, never `scale`, for JOB TODAY. `scale` has fixed legacy sources; explicit `--sources` with it is rejected. The shipped Canarias unit now selects `sce,jobtoday`; Cantabria selects `emcan,jobtoday`. Both have a 10000-record cap and 1440-minute cooldown. This intentionally replaces the old Canarias scale/five-minute template. Other sources remain explicit opt-ins.

@@ -2,6 +2,8 @@
 
 Python pipeline for Canary Islands and Cantabria job postings plus Spanish university degree catalogs and alignment scoring based on text embeddings.
 
+Both regions use `main`. Regional data, databases and daemon services stay separate within the same checkout; no separate regional deployment branch is needed.
+
 ## Status
 
 | Surface | Status | Notes |
