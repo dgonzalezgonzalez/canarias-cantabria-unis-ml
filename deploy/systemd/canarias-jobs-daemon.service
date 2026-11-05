@@ -1,16 +1,17 @@
 [Unit]
-Description=Canarias Jobs Nightly Daemon
+Description=Canarias Jobs Nightly Daemon (official source + Scrapling JOB TODAY)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/opt/canarias-uni-ml
-EnvironmentFile=/opt/canarias-uni-ml/.env
-ExecStart=/opt/canarias-uni-ml/.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --window-start 22:00 --window-end 07:30 --timezone Europe/Madrid --strategy scale --time-limit-minutes 45 --cooldown-minutes 5 --stagnation-cycles 6 --fail-on-stagnation
-Restart=always
-RestartSec=15
+WorkingDirectory=/opt/canarias-cantabria-unis-ml
+EnvironmentFile=-/opt/canarias-cantabria-unis-ml/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/canarias-cantabria-unis-ml/.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --region canarias --sources sce,jobtoday --window-start 22:00 --window-end 07:30 --timezone Europe/Madrid --strategy scrape --limit-per-source 10000 --cooldown-minutes 1440 --stagnation-cycles 1 --fail-on-stagnation
+Restart=on-failure
+RestartSec=60
 KillSignal=SIGTERM
 TimeoutStopSec=120
 

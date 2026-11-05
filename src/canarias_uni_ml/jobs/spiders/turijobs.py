@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 import xml.etree.ElementTree as ET
 
 import requests
@@ -22,6 +23,17 @@ TURIJOBS_SITEMAP_URL = "https://www.turijobs.com/es-es/sitemap/active-offers.xml
 TURIJOBS_LOCATION_MARKERS = {
     "canarias": ("islas-canarias", "las-palmas", "santa-cruz-de-tenerife"),
     "cantabria": ("cantabria", "santander", "torrelavega"),
+}
+CANTABRIA_CITIES = {
+    "santander",
+    "torrelavega",
+    "camargo",
+    "castro-urdiales",
+    "laredo",
+    "pielagos",
+    "el astillero",
+    "santa cruz de bezana",
+    "los corrales de buelna",
 }
 
 
@@ -60,7 +72,9 @@ class TurijobsSpider:
 
         if not records:
             raise SpiderError("Turijobs detail pages could not be scraped")
-        return SpiderResult(source=self.source, records=records[:limit])
+        # Sitemap candidate cap plus detail filtering means this is not a
+        # complete census; stale rows must remain until a dedicated full crawl.
+        return SpiderResult(source=self.source, records=records[:limit], complete=False)
 
     def _fetch_candidate_urls(self, cap: int) -> list[str]:
         response = self.session.get(TURIJOBS_SITEMAP_URL, timeout=30)
@@ -111,6 +125,8 @@ class TurijobsSpider:
 
         province = clean_text(location.get("regionName"))
         municipality = clean_text(location.get("cityName"))
+        if self.region == "cantabria" and not self._is_cantabria_location(province, municipality):
+            return None
         return JobRecord(
             source=self.source,
             external_id=str(detail.get("id")),
@@ -157,3 +173,14 @@ class TurijobsSpider:
         if not cleaned:
             return None
         return clean_text(BeautifulSoup(cleaned, "html.parser").get_text(" ", strip=True))
+
+    @staticmethod
+    def _fold(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value.casefold())
+        return "".join(char for char in normalized if not unicodedata.combining(char)).strip()
+
+    @classmethod
+    def _is_cantabria_location(cls, province: str | None, municipality: str | None) -> bool:
+        if province:
+            return cls._fold(province) == "cantabria"
+        return cls._fold(municipality or "") in CANTABRIA_CITIES

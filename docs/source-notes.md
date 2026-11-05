@@ -10,9 +10,9 @@
 
 Investigación y decisiones para Cantabria: `docs/cantabria-job-sources.md`.
 
-## Excluded Source
+## Opt-in Source
 
-- `infojobs`: fuera del alcance actual del pipeline.
+- `infojobs`: páginas públicas mediante Scrapling, sin clave API ni servicios de pago; disponible explícitamente con `--sources infojobs` para ambas regiones. Ver `docs/scrapling-setup.md` y la sección opcional del despliegue remoto. Cobertura parcial; se detiene ante bloqueos.
 
 ## Scaling Strategy
 

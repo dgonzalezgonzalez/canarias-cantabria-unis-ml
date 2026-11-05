@@ -7,6 +7,8 @@ Python pipeline for Canary Islands and Cantabria job postings plus Spanish unive
 | Surface | Status | Notes |
 |--------|--------|-------|
 | SCE | ✅ Working | API JWT, número de ofertas variable |
+| JOB TODAY / Scrapling | ✅ Added | Native offers for both regions; partial coverage, no API key |
+| InfoJobs / Scrapling | 🧪 Opt-in | Public detail pages for both regions; no API key; stops on access failures |
 | EMCAN / SNE | ✅ Added | Official Cantabria offer details, no credentials |
 | Trabajo Cantabria | ✅ Added | CEOE-CEPYME Cantabria public listing/details |
 | Turijobs | ✅ Working | Sitemap + detail pages |
@@ -19,7 +21,7 @@ Python pipeline for Canary Islands and Cantabria job postings plus Spanish unive
 ## Environment Variables
 
 ```bash
-export JOBSPY_PROXIES='["user:pass@host:port"]'   # optional
+# JobSpy is optional; do not use proxies to bypass source controls.
 export OPENAI_API_KEY='sk-...'                      # required for OpenAI embeddings
 export GROQ_API_KEY='...'                           # optional experiments
 export OLLAMA_BASE_URL='http://127.0.0.1:11434'    # local testing provider
@@ -31,16 +33,27 @@ Important: ChatGPT subscription and OpenAI API billing are separate. API usage m
 ## Quickstart
 
 ```bash
+python3 --version  # Python 3.10+
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python -m playwright install chromium
+# Only needed for Turijobs; install OS dependencies under the service user on Linux.
+python -m playwright install --with-deps chromium
+# Optional InfoJobs public browser adapter: install under the service account.
+scrapling install
 
 # Scrape jobs
 python -m src.canarias_uni_ml.cli jobs scrape --limit-per-source 50
 
 # Scrape Cantabria (writes cantabria_jobs.csv/.db by default)
 python -m src.canarias_uni_ml.cli jobs scrape --region cantabria --limit-per-source 200
+# Policy-safe official-only crawl (recommended default)
+python -m src.canarias_uni_ml.cli jobs scrape --region cantabria --sources emcan --limit-per-source 200
+# Opt into Trabajo Cantabria only after its source terms are cleared
+python -m src.canarias_uni_ml.cli jobs scrape --region cantabria --sources emcan,trabajocantabria --limit-per-source 200
+# Explicit public InfoJobs attempt (partial results; see docs/scrapling-setup.md).
+python -m src.canarias_uni_ml.cli jobs scrape --region cantabria --sources infojobs --limit-per-source 10000
+python -m src.canarias_uni_ml.cli jobs scrape --region canarias --sources infojobs --limit-per-source 10000
 
 # Build degree catalog from fixture
 python -m src.canarias_uni_ml.cli degrees catalog --fixture tests/fixtures/degrees_catalog_fixture.json
@@ -93,6 +106,8 @@ Canonical and raw values both persist:
 - `province`, `municipality`, `island`, `contract_type`: canonical values
 - `province_raw`, `municipality_raw`, `island_raw`, `contract_type_raw`: original scraped values
 - `raw_location`: original free-text location
+- `publication_date`, `update_date`, `closing_date`: lifecycle dates when the source publishes them
+- `is_active`: current-snapshot flag; inactive history remains in SQLite but is omitted from the exported CSV
 
 ## Nightly Daemon
 
@@ -104,57 +119,27 @@ Canonical and raw values both persist:
   - exports snapshot CSV after each cycle (`data/processed/canarias_jobs.csv`)
   - avoids duplicates across nights
   - on repeated jobs, updates row only when payload changed; unchanged rows are skipped
+  - exports only active rows; complete source snapshots deactivate offers no longer returned
+  - capped/best-effort sources never deactivate missing rows
+  - source failures return non-zero and never overwrite the previous CSV snapshot
+  - unchanged successful cycles are healthy; failure thresholds count source failures, not unchanged rows
 
 Production deployment guide: `docs/operations/remote-nightly-deploy.md`
 
-Cantabria VM command:
+Two-region VM setup and the remote-agent handoff are documented in
+[Remote nightly deployment](docs/operations/remote-nightly-deploy.md).
+The shipped units select `sce,jobtoday` for Canarias and `emcan,jobtoday` for Cantabria,
+using `--strategy scrape` and a daily cooldown. `scale` does not run JOB TODAY.
 
 ```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon \
-  --region cantabria \
-  --strategy scrape \
-  --limit-per-source 200 \
-  --window-start 22:00 \
-  --window-end 07:30 \
-  --cooldown-minutes 30
+# Small manual preflight of the new source for each region
+.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once --strategy scrape --region canarias --sources jobtoday --limit-per-source 1
+.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once --strategy scrape --region cantabria --sources jobtoday --limit-per-source 1
 ```
 
-Ready-made unit: `deploy/systemd/cantabria-jobs-daemon.service`. Source rationale, alternatives, and risks: `docs/cantabria-job-sources.md`.
-
-## Remote run order (safe)
-
-Run in this exact order on the remote host:
-
-1. Backup current DB
-```bash
-cp data/processed/canarias_jobs.db data/processed/canarias_jobs.$(date +%F).bak.db
-```
-
-2. Stop daemon/service
-```bash
-sudo systemctl stop canarias-jobs-daemon.service
-```
-
-3. Compact DB (drop logical duplicates, keep latest row per job)
-```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs compact --db-path data/processed/canarias_jobs.db
-```
-
-4. Preflight one cycle
-```bash
-.venv/bin/python -m src.canarias_uni_ml.cli jobs daemon --run-once --strategy scale --time-limit-minutes 45
-```
-
-5. Start nightly daemon
-```bash
-sudo systemctl start canarias-jobs-daemon.service
-```
-
-6. Monitor health/logs
-```bash
-sudo systemctl status canarias-jobs-daemon.service
-sudo journalctl -u canarias-jobs-daemon.service -f
-```
+Scrapling HTTP collection needs no Chromium download, MCP server, API key or paid service.
+[Scrapling notes](docs/scrapling-setup.md) cover local installation, source limits and the previous collection.
+The deployment runbook covers both systemd units, backups, dependency installation and existing-state preservation.
 
 ## Job-Degree Pairing (Detailed)
 
